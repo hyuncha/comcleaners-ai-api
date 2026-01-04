@@ -1,0 +1,23 @@
+# secrets
+.env
+
+# backups
+*.bak.*
+*.bak
+
+# traefik / certs
+acme.json
+
+# volumes / data
+qdrant_data/
+data/
+
+# python
+__pycache__/
+*.pyc
+
+# logs
+*.log
+
+# OS
+.DS_Store

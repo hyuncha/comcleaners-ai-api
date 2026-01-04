@@ -1,0 +1,75 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: ./app
+    container_name: api
+    env_file:
+      - .env
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+    depends_on:
+      - qdrant
+    restart: unless-stopped
+
+    # ✅ healthcheck (python으로 /docs 체크)
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/docs', timeout=2); print('ok')\""]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=n8n_default"
+      - "traefik.http.routers.ai_api.rule=Host(`ai.comcleaners.net`)"
+      - "traefik.http.routers.ai_api.entrypoints=websecure"
+      - "traefik.http.routers.ai_api.tls=true"
+      - "traefik.http.routers.ai_api.tls.certresolver=mytlschallenge"
+      - "traefik.http.routers.ai_api.service=ai_api"
+      - "traefik.http.services.ai_api.loadbalancer.server.port=8000"
+
+      # ✅ / -> /docs 리다이렉트
+      - "traefik.http.middlewares.ai_root_to_docs.redirectregex.regex=^https?://ai\\.comcleaners\\.net/?$"
+      - "traefik.http.middlewares.ai_root_to_docs.redirectregex.replacement=https://ai.comcleaners.net/docs"
+      - "traefik.http.middlewares.ai_root_to_docs.redirectregex.permanent=true"
+
+      # ✅ 보안 헤더
+      - "traefik.http.middlewares.ai_secure_headers.headers.stsSeconds=31536000"
+      - "traefik.http.middlewares.ai_secure_headers.headers.stsIncludeSubdomains=true"
+      - "traefik.http.middlewares.ai_secure_headers.headers.stsPreload=true"
+      - "traefik.http.middlewares.ai_secure_headers.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.ai_secure_headers.headers.browserXssFilter=true"
+      - "traefik.http.middlewares.ai_secure_headers.headers.frameDeny=true"
+      - "traefik.http.middlewares.ai_secure_headers.headers.referrerPolicy=no-referrer"
+
+      # ✅ 레이트리밋
+      - "traefik.http.middlewares.ai_ratelimit.ratelimit.average=5"
+      - "traefik.http.middlewares.ai_ratelimit.ratelimit.burst=20"
+
+      # ✅ 미들웨어 체인 적용
+      - "traefik.http.routers.ai_api.middlewares=ai_root_to_docs,ai_secure_headers,ai_ratelimit"
+
+    networks:
+      - default
+      - n8n_default
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.1
+    container_name: qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+    networks:
+      - default
+
+networks:
+  n8n_default:
+    external: true
+
+volumes:
+  qdrant_data:
